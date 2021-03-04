@@ -31,7 +31,6 @@ import ai.verta.modeldb.utils.ModelDBHibernateUtil;
 import ai.verta.modeldb.utils.ModelDBUtils;
 import ai.verta.modeldb.utils.RdbmsUtils;
 import ai.verta.modeldb.versioning.blob.container.BlobContainer;
-import ai.verta.uac.GetResourcesResponseItem;
 import ai.verta.uac.UserInfo;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -68,6 +67,8 @@ import org.hibernate.query.Query;
 public class CommitDAORdbImpl implements CommitDAO {
 
   private static final Logger LOGGER = LogManager.getLogger(CommitDAORdbImpl.class);
+  private static final ModelDBHibernateUtil modelDBHibernateUtil =
+      ModelDBHibernateUtil.getInstance();
   private final AuthService authService;
   private final RoleService roleService;
 
@@ -110,7 +111,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       BlobFunction.BlobFunctionAttribute setBlobsAttributes,
       RepositoryFunction getRepository)
       throws ModelDBException, NoSuchAlgorithmException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession();
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession();
         AutoCloseable ignored = acquireWriteLock(commit.getCommitSha())) {
       session.beginTransaction();
       final String rootSha = setBlobs.apply(session);
@@ -123,12 +124,14 @@ public class CommitDAORdbImpl implements CommitDAO {
       return CreateCommitRequest.Response.newBuilder()
           .setCommit(commitEntity.toCommitProto())
           .build();
-    } catch (Exception ex) {
+    } catch (ModelDBException ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return setCommit(author, commit, setBlobs, setBlobsAttributes, getRepository);
       } else {
-        throw new ModelDBException(ex);
+        throw ex;
       }
+    } catch (Exception ex) {
+      throw new ModelDBException(ex);
     }
   }
 
@@ -157,7 +160,7 @@ public class CommitDAORdbImpl implements CommitDAO {
             .setParentId(getBranchResponse.getCommit().getCommitSha())
             .build();
 
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Blob.Builder blobBuilder = Blob.newBuilder();
       if (datasetVersion.hasDatasetBlob()) {
         blobBuilder.setDataset(datasetVersion.getDatasetBlob());
@@ -431,7 +434,7 @@ public class CommitDAORdbImpl implements CommitDAO {
   public ListCommitsRequest.Response listCommits(
       ListCommitsRequest request, RepositoryFunction getRepository, boolean ascending)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepository.apply(session);
 
       CommitPaginationDTO commitPaginationDTO =
@@ -482,7 +485,7 @@ public class CommitDAORdbImpl implements CommitDAO {
   @Override
   public Commit getCommit(String commitHash, RepositoryFunction getRepository)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       CommitEntity commitEntity = getCommitEntity(session, commitHash, getRepository);
 
       return commitEntity.toCommitProto();
@@ -533,7 +536,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       List<String> datasetVersionIds,
       RepositoryDAO repositoryDAO)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repositoryEntity = null;
       if (repositoryIdentification != null) {
         repositoryEntity =
@@ -638,6 +641,7 @@ public class CommitDAORdbImpl implements CommitDAO {
         DeleteEntitiesCron.deleteAttribute(session, compositeId);
         session.delete(commitEntity);
         session.getTransaction().commit();
+        session.clear();
       }
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
@@ -654,7 +658,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       List<String> commitShas,
       RepositoryDAO repositoryDAO)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Query<CommitEntity> getCommitQuery =
           session.createQuery(
               "From "
@@ -792,7 +796,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       List<String> tagsList,
       boolean deleteAll)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repositoryEntity =
           VersioningUtils.getDatasetRepositoryEntity(
               session, repositoryDAO, datasetId, datasetVersionId, true);
@@ -826,7 +830,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       List<String> labelsList,
       boolean deleteAll)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       String compositeId =
           VersioningUtils.getVersioningCompositeId(
               repositoryEntity.getId(),
@@ -870,7 +874,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       String sortKey,
       boolean ascending)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       CommitPaginationDTO commitPaginationDTO =
           findCommits(
               session,
@@ -975,16 +979,7 @@ public class CommitDAORdbImpl implements CommitDAO {
 
       String workspaceName = request.getWorkspaceName();
       LOGGER.debug("Workspace is : '{}'", workspaceName);
-      if (!workspaceName.isEmpty()
-          && workspaceName.equals(authService.getUsernameFromUserInfo(currentLoginUserInfo))) {
-        LOGGER.debug("Workspace match with username of the login user");
-        List<GetResourcesResponseItem> accessibleAllWorkspaceItems =
-            roleService.getResourceItems(null, accessibleResourceIds, modelDBServiceResourceTypes);
-        accessibleResourceIds =
-            accessibleAllWorkspaceItems.stream()
-                .map(GetResourcesResponseItem::getResourceId)
-                .collect(Collectors.toSet());
-      } else {
+      if (!workspaceName.isEmpty()) {
         accessibleResourceIds =
             ModelDBUtils.filterWorkspaceOnlyAccessibleIds(
                 roleService,
@@ -1437,7 +1432,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       String datasetVersionId,
       String description)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repositoryEntity;
       CommitEntity commitEntity = null;
 
@@ -1507,7 +1502,7 @@ public class CommitDAORdbImpl implements CommitDAO {
       MetadataDAO metadataDAO,
       String datasetVersionId)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       return blobDAO.convertToDatasetVersion(
           repositoryDAO, metadataDAO, null, datasetVersionId, false);
     } catch (Exception ex) {

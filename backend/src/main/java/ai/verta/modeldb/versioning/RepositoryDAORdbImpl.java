@@ -4,21 +4,26 @@ import static ai.verta.modeldb.metadata.IDTypeEnum.IDType.VERSIONING_REPOSITORY;
 
 import ai.verta.common.KeyValueQuery;
 import ai.verta.common.ModelDBResourceEnum.ModelDBServiceResourceTypes;
-import ai.verta.modeldb.*;
+import ai.verta.modeldb.AddDatasetTags;
 import ai.verta.modeldb.Dataset;
 import ai.verta.modeldb.DatasetVisibilityEnum;
 import ai.verta.modeldb.FindDatasets;
 import ai.verta.modeldb.GetDatasetById;
 import ai.verta.modeldb.ModelDBConstants;
 import ai.verta.modeldb.authservice.RoleService;
+import ai.verta.modeldb.common.CommonUtils;
 import ai.verta.modeldb.common.authservice.AuthService;
 import ai.verta.modeldb.common.collaborator.CollaboratorUser;
 import ai.verta.modeldb.common.exceptions.InternalErrorException;
 import ai.verta.modeldb.common.exceptions.ModelDBException;
 import ai.verta.modeldb.dto.DatasetPaginationDTO;
 import ai.verta.modeldb.entities.AttributeEntity;
-import ai.verta.modeldb.entities.versioning.*;
+import ai.verta.modeldb.entities.versioning.BranchEntity;
+import ai.verta.modeldb.entities.versioning.CommitEntity;
+import ai.verta.modeldb.entities.versioning.RepositoryEntity;
+import ai.verta.modeldb.entities.versioning.RepositoryEnums;
 import ai.verta.modeldb.entities.versioning.RepositoryEnums.RepositoryTypeEnum;
+import ai.verta.modeldb.entities.versioning.TagsEntity;
 import ai.verta.modeldb.experimentRun.ExperimentRunDAO;
 import ai.verta.modeldb.metadata.IdentificationType;
 import ai.verta.modeldb.metadata.MetadataDAO;
@@ -63,6 +68,8 @@ import org.hibernate.query.Query;
 public class RepositoryDAORdbImpl implements RepositoryDAO {
 
   private static final Logger LOGGER = LogManager.getLogger(RepositoryDAORdbImpl.class);
+  private static final ModelDBHibernateUtil modelDBHibernateUtil =
+      ModelDBHibernateUtil.getInstance();
   private static final String GLOBAL_SHARING = "_REPO_GLOBAL_SHARING";
   public static final String UNEXPECTED_ERROR_ON_REPOSITORY_ENTITY_CONVERSION_TO_PROTO =
       "Unexpected error on repository entity conversion to proto";
@@ -266,7 +273,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   @Override
   public GetRepositoryRequest.Response getRepository(GetRepositoryRequest request)
       throws Exception {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepositoryById(session, request.getId());
       return GetRepositoryRequest.Response.newBuilder()
           .setRepository(repository.toProto(roleService, authService))
@@ -364,7 +371,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   @Override
   public RepositoryEntity getProtectedRepositoryById(
       RepositoryIdentification id, boolean checkWrite) throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       return getRepositoryById(session, id, checkWrite, false, RepositoryTypeEnum.DATASET);
     }
   }
@@ -418,7 +425,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   public SetRepository.Response setRepository(
       SetRepository request, UserInfo userInfo, boolean create)
       throws ModelDBException, InvalidProtocolBufferException, NoSuchAlgorithmException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository =
           setRepository(
               session,
@@ -471,9 +478,16 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       deletedEntitiesQuery.setParameter("name", name);
       List<Long> deletedEntityIds = deletedEntitiesQuery.list();
       if (!deletedEntityIds.isEmpty()) {
-        roleService.deleteEntityResources(
-            deletedEntityIds.stream().map(String::valueOf).collect(Collectors.toList()),
-            ModelDBServiceResourceTypes.REPOSITORY);
+        try {
+          CommonUtils.registeredBackgroundUtilsCount();
+          roleService.deleteEntityResourcesWithServiceUser(
+              deletedEntityIds.stream().map(String::valueOf).collect(Collectors.toList()),
+              repositoryType.equals(RepositoryTypeEnum.DATASET)
+                  ? ModelDBServiceResourceTypes.DATASET
+                  : ModelDBServiceResourceTypes.REPOSITORY);
+        } finally {
+          CommonUtils.unregisteredBackgroundUtilsCount();
+        }
       }
 
       repositoryEntity = new RepositoryEntity(repository, repositoryType);
@@ -526,11 +540,11 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
         ModelDBServiceResourceTypes modelDBServiceResourceTypes =
             ModelDBUtils.getModelDBServiceResourceTypesFromRepository(repositoryEntity);
         roleService.createWorkspacePermissions(
-            workspace.getId(),
+            Optional.of(workspace.getId()),
             Optional.empty(),
             String.valueOf(repositoryEntity.getId()),
             repositoryEntity.getName(),
-            Optional.empty(), // UAC will populate the owner ID
+            Optional.empty(),
             modelDBServiceResourceTypes,
             repository.getCustomPermission(),
             resourceVisibility);
@@ -572,7 +586,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       boolean canNotOperateOnProtected,
       RepositoryEnums.RepositoryTypeEnum repositoryType)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository =
           getRepositoryById(
               session, request.getRepositoryId(), true, canNotOperateOnProtected, repositoryType);
@@ -635,7 +649,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
           "Delete Access Denied for given repository Ids : " + repositoryIds,
           Code.PERMISSION_DENIED);
     }
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       deleteRepositories(session, experimentRunDAO, allowedRepositoryIds);
     }
     return true;
@@ -645,7 +659,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   public Dataset createOrUpdateDataset(
       Dataset dataset, String workspaceName, boolean create, UserInfo userInfo)
       throws ModelDBException, NoSuchAlgorithmException, InvalidProtocolBufferException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryIdentification.Builder repositoryIdBuilder = RepositoryIdentification.newBuilder();
       if (dataset.getId().isEmpty()) {
         repositoryIdBuilder.setNamedId(
@@ -752,7 +766,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   public ListRepositoriesRequest.Response listRepositories(
       ListRepositoriesRequest request, UserInfo currentLoginUserInfo)
       throws ModelDBException, InvalidProtocolBufferException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       CriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
       // Using FROM and JOIN
       CriteriaQuery<RepositoryEntity> criteriaQuery =
@@ -855,7 +869,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
 
   @Override
   public SetTagRequest.Response setTag(SetTagRequest request) throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepositoryById(session, request.getRepositoryId(), true);
       session.lock(repository, LockMode.PESSIMISTIC_WRITE);
 
@@ -895,7 +909,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
 
   @Override
   public GetTagRequest.Response getTag(GetTagRequest request) throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepositoryById(session, request.getRepositoryId());
 
       Query query = session.createQuery(GET_TAG_HQL);
@@ -919,7 +933,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
 
   @Override
   public DeleteTagRequest.Response deleteTag(DeleteTagRequest request) throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepositoryById(session, request.getRepositoryId(), true);
       TagsEntity tagsEntity =
           session.get(
@@ -944,7 +958,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
 
   @Override
   public ListTagsRequest.Response listTags(ListTagsRequest request) throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       session.beginTransaction();
       RepositoryEntity repository = getRepositoryById(session, request.getRepositoryId());
 
@@ -980,7 +994,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       boolean canNotOperateOnProtected,
       RepositoryEnums.RepositoryTypeEnum repositoryType)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository =
           getRepositoryById(
               session, request.getRepositoryId(), true, canNotOperateOnProtected, repositoryType);
@@ -1049,7 +1063,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       boolean canNotOperateOnProtected,
       RepositoryEnums.RepositoryTypeEnum repositoryType)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository =
           getRepositoryById(
               session, request.getRepositoryId(), false, canNotOperateOnProtected, repositoryType);
@@ -1069,7 +1083,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   @Override
   public DeleteBranchRequest.Response deleteBranch(DeleteBranchRequest request)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepositoryById(session, request.getRepositoryId(), true);
       BranchEntity branchEntity =
           session.get(
@@ -1111,7 +1125,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   @Override
   public ListBranchesRequest.Response listBranches(ListBranchesRequest request)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepositoryById(session, request.getRepositoryId());
 
       Query query = session.createQuery(GET_REPOSITORY_BRANCHES_HQL);
@@ -1142,7 +1156,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   @Override
   public ListCommitsLogRequest.Response listCommitsLog(ListCommitsLogRequest request)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repository = getRepositoryById(session, request.getRepositoryId());
 
       String referenceCommit;
@@ -1205,7 +1219,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   @Override
   public FindRepositories.Response findRepositories(FindRepositories request)
       throws ModelDBException, InvalidProtocolBufferException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       UserInfo currentLoginUserInfo = authService.getCurrentLoginUserInfo();
       try {
         Set<String> accessibleResourceIdsWithCollaborator =
@@ -1320,7 +1334,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   public AddDatasetTags.Response addDatasetTags(
       MetadataDAO metadataDAO, String id, List<String> tags)
       throws ModelDBException, InvalidProtocolBufferException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryIdentification repositoryIdentification =
           RepositoryIdentification.newBuilder().setRepoId(Long.parseLong(id)).build();
       addRepositoryTags(
@@ -1350,7 +1364,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       boolean canNotOperateOnProtected,
       RepositoryEnums.RepositoryTypeEnum repositoryType)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Transaction transaction = session.beginTransaction();
       RepositoryEntity repositoryEntity =
           getRepositoryById(
@@ -1390,7 +1404,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       UserInfo currentLoginUserInfo,
       ResourceVisibility resourceVisibility)
       throws InvalidProtocolBufferException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       CriteriaBuilder builder = session.getCriteriaBuilder();
       // Using FROM and JOIN
       CriteriaQuery<RepositoryEntity> criteriaQuery = builder.createQuery(RepositoryEntity.class);
@@ -1567,7 +1581,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   public Dataset deleteDatasetTags(
       MetadataDAO metadataDAO, String id, List<String> tagsList, boolean deleteAll)
       throws ModelDBException, InvalidProtocolBufferException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryIdentification repositoryIdentification =
           RepositoryIdentification.newBuilder().setRepoId(Long.parseLong(id)).build();
       deleteRepositoryTags(
@@ -1600,7 +1614,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       boolean canNotOperateOnProtected,
       RepositoryEnums.RepositoryTypeEnum repositoryType)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       session.beginTransaction();
       RepositoryEntity repositoryEntity =
           getRepositoryById(
@@ -1634,7 +1648,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
   @Override
   public GetDatasetById.Response getDatasetById(MetadataDAO metadataDAO, String id)
       throws ModelDBException, InvalidProtocolBufferException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repositoryEntity =
           getRepositoryById(
               session,
@@ -1696,7 +1710,7 @@ public class RepositoryDAORdbImpl implements RepositoryDAO {
       boolean canNotOperateOnProtected,
       RepositoryEnums.RepositoryTypeEnum repositoryType)
       throws ModelDBException {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       session.beginTransaction();
       RepositoryEntity repositoryEntity =
           getRepositoryById(

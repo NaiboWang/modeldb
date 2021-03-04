@@ -52,12 +52,13 @@ import ai.verta.modeldb.VerifyConnectionResponse;
 import ai.verta.modeldb.artifactStore.ArtifactStoreDAO;
 import ai.verta.modeldb.audit_log.AuditLogLocalDAO;
 import ai.verta.modeldb.authservice.RoleService;
+import ai.verta.modeldb.common.CommonUtils;
 import ai.verta.modeldb.common.authservice.AuthService;
+import ai.verta.modeldb.common.exceptions.AlreadyExistsException;
 import ai.verta.modeldb.common.exceptions.InternalErrorException;
 import ai.verta.modeldb.common.exceptions.NotFoundException;
 import ai.verta.modeldb.dto.ProjectPaginationDTO;
 import ai.verta.modeldb.entities.audit_log.AuditLogLocalEntity;
-import ai.verta.modeldb.exceptions.AlreadyExistsException;
 import ai.verta.modeldb.exceptions.InvalidArgumentException;
 import ai.verta.modeldb.experimentRun.ExperimentRunDAO;
 import ai.verta.modeldb.monitoring.MonitoringInterceptor;
@@ -68,7 +69,6 @@ import ai.verta.uac.ResourceVisibility;
 import ai.verta.uac.ServiceEnum.Service;
 import ai.verta.uac.UserInfo;
 import com.google.protobuf.InvalidProtocolBufferException;
-import com.google.protobuf.Value;
 import io.grpc.stub.StreamObserver;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -193,50 +193,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, CreateProject.Response.getDefaultInstance());
-    }
-  }
-
-  /**
-   * Update project name in Project Entity. Create project object with updated data from
-   * UpdateProjectName request and update in database.
-   *
-   * @param UpdateProjectName request, UpdateProjectName.Response response
-   * @return void
-   */
-  @Override
-  public void updateProjectName(
-      UpdateProjectName request, StreamObserver<UpdateProjectName.Response> responseObserver) {
-    try {
-      // Request Parameter Validation
-      if (request.getId().isEmpty()) {
-        String errorMessage = "Project ID not found in UpdateProjectName request";
-        throw new InvalidArgumentException(errorMessage);
-      }
-
-      // Validate if current user has access to the entity or not
-      roleService.validateEntityUserWithUserInfo(
-          ModelDBServiceResourceTypes.PROJECT, request.getId(), ModelDBServiceActions.UPDATE);
-
-      UserInfo userInfo = authService.getCurrentLoginUserInfo();
-      Project updatedProject =
-          projectDAO.updateProjectName(
-              userInfo, request.getId(), ModelDBUtils.checkEntityNameLength(request.getName()));
-      UpdateProjectName.Response response =
-          UpdateProjectName.Response.newBuilder().setProject(updatedProject).build();
-      saveAuditLogs(
-          Optional.of(userInfo),
-          ModelDBServiceActions.UPDATE,
-          Collections.singletonList(updatedProject.getId()),
-          ModelDBUtils.getStringFromProtoObject(request),
-          ModelDBUtils.getStringFromProtoObject(response),
-          updatedProject.getWorkspaceServiceId());
-      responseObserver.onNext(response);
-      responseObserver.onCompleted();
-
-    } catch (Exception e) {
-      ModelDBUtils.observeError(
-          responseObserver, e, UpdateProjectName.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, CreateProject.Response.getDefaultInstance());
     }
   }
 
@@ -277,7 +234,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, UpdateProjectDescription.Response.getDefaultInstance());
     }
   }
@@ -320,7 +277,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, AddProjectAttributes.Response.getDefaultInstance());
     }
   }
@@ -369,7 +326,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, UpdateProjectAttributes.Response.getDefaultInstance());
     }
   }
@@ -424,7 +381,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, GetAttributes.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetAttributes.Response.getDefaultInstance());
     }
   }
 
@@ -470,7 +427,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, DeleteProjectAttributes.Response.getDefaultInstance());
     }
   }
@@ -511,7 +468,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, AddProjectTags.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, AddProjectTags.Response.getDefaultInstance());
     }
   }
 
@@ -543,7 +500,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, GetTags.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetTags.Response.getDefaultInstance());
     }
   }
 
@@ -591,7 +548,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, DeleteProjectTags.Response.getDefaultInstance());
     }
   }
@@ -635,7 +592,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, AddProjectTag.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, AddProjectTag.Response.getDefaultInstance());
     }
   }
 
@@ -676,8 +633,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
-          responseObserver, e, DeleteProjectTag.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, DeleteProjectTag.Response.getDefaultInstance());
     }
   }
 
@@ -715,7 +671,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, DeleteProject.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, DeleteProject.Response.getDefaultInstance());
     }
   }
 
@@ -760,7 +716,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, GetProjects.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetProjects.Response.getDefaultInstance());
     }
   }
 
@@ -792,7 +748,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, GetProjectById.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetProjectById.Response.getDefaultInstance());
     }
   }
 
@@ -812,20 +768,23 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
 
       // Get the user info from the Context
       UserInfo userInfo = authService.getCurrentLoginUserInfo();
+      String workspaceName =
+          request.getWorkspaceName().isEmpty()
+              ? authService.getUsernameFromUserInfo(userInfo)
+              : request.getWorkspaceName();
+      List<GetResourcesResponseItem> responseItem =
+          roleService.getEntityResourcesByName(
+              Optional.of(request.getName()),
+              Optional.empty(),
+              ModelDBServiceResourceTypes.PROJECT);
 
       FindProjects.Builder findProjects =
           FindProjects.newBuilder()
-              .addPredicates(
-                  KeyValueQuery.newBuilder()
-                      .setKey(ModelDBConstants.NAME)
-                      .setValue(Value.newBuilder().setStringValue(request.getName()).build())
-                      .setOperator(OperatorEnum.Operator.EQ)
-                      .setValueType(ValueTypeEnum.ValueType.STRING)
-                      .build())
-              .setWorkspaceName(
-                  request.getWorkspaceName().isEmpty()
-                      ? authService.getUsernameFromUserInfo(userInfo)
-                      : request.getWorkspaceName());
+              .addAllProjectIds(
+                  responseItem.stream()
+                      .map(GetResourcesResponseItem::getResourceId)
+                      .collect(Collectors.toList()))
+              .setWorkspaceName(workspaceName);
 
       ProjectPaginationDTO projectPaginationDTO =
           projectDAO.findProjects(findProjects.build(), null, userInfo, ResourceVisibility.PRIVATE);
@@ -863,8 +822,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
-          responseObserver, e, GetProjectByName.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetProjectByName.Response.getDefaultInstance());
     }
   }
 
@@ -902,7 +860,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, DeepCopyProject.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, DeepCopyProject.Response.getDefaultInstance());
     }
   }
 
@@ -1024,7 +982,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, GetSummary.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetSummary.Response.getDefaultInstance());
     }
   }
 
@@ -1065,8 +1023,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onNext(response);
       responseObserver.onCompleted();
     } catch (Exception e) {
-      ModelDBUtils.observeError(
-          responseObserver, e, SetProjectReadme.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, SetProjectReadme.Response.getDefaultInstance());
     }
   }
 
@@ -1097,8 +1054,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onNext(response);
       responseObserver.onCompleted();
     } catch (Exception e) {
-      ModelDBUtils.observeError(
-          responseObserver, e, GetProjectReadme.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetProjectReadme.Response.getDefaultInstance());
     }
   }
 
@@ -1147,7 +1103,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onNext(response);
       responseObserver.onCompleted();
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, SetProjectShortName.Response.getDefaultInstance());
     }
   }
@@ -1179,7 +1135,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onNext(response);
       responseObserver.onCompleted();
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, GetProjectShortName.Response.getDefaultInstance());
     }
   }
@@ -1231,7 +1187,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, LogProjectCodeVersion.Response.getDefaultInstance());
     }
   }
@@ -1268,7 +1224,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, GetProjectCodeVersion.Response.getDefaultInstance());
     }
   }
@@ -1300,7 +1256,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, FindProjects.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, FindProjects.Response.getDefaultInstance());
     }
   }
 
@@ -1358,7 +1314,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onNext(response);
       responseObserver.onCompleted();
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, GetUrlForArtifact.Response.getDefaultInstance());
     }
   }
@@ -1406,7 +1362,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, LogProjectArtifacts.Response.getDefaultInstance());
     }
   }
@@ -1439,7 +1395,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, GetArtifacts.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, GetArtifacts.Response.getDefaultInstance());
     }
   }
 
@@ -1475,7 +1431,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(
+      CommonUtils.observeError(
           responseObserver, e, DeleteProjectArtifact.Response.getDefaultInstance());
     }
   }
@@ -1510,7 +1466,7 @@ public class ProjectServiceImpl extends ProjectServiceImplBase {
       responseObserver.onCompleted();
 
     } catch (Exception e) {
-      ModelDBUtils.observeError(responseObserver, e, DeleteProjects.Response.getDefaultInstance());
+      CommonUtils.observeError(responseObserver, e, DeleteProjects.Response.getDefaultInstance());
     }
   }
 }

@@ -38,6 +38,8 @@ import org.hibernate.query.Query;
 
 public class CollaboratorResourceMigration {
   private static final Logger LOGGER = LogManager.getLogger(CollaboratorResourceMigration.class);
+  private static final ModelDBHibernateUtil modelDBHibernateUtil =
+      ModelDBHibernateUtil.getInstance();
   private static final String REPOSITORY_GLOBAL_SHARING = "_REPO_GLOBAL_SHARING";
   private static AuthService authService;
   private static RoleService roleService;
@@ -77,7 +79,7 @@ public class CollaboratorResourceMigration {
     final int pagesize = CollaboratorResourceMigration.paginationSize;
     LOGGER.debug("Total Projects to migrate {}", count);
 
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       CriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
 
       CriteriaQuery<ProjectEntity> criteriaQuery = criteriaBuilder.createQuery(ProjectEntity.class);
@@ -144,7 +146,8 @@ public class CollaboratorResourceMigration {
           // ignore the CollaboratorType
           try {
             roleService.createWorkspacePermissions(
-                workspaceDTO.getWorkspaceName(),
+                Optional.empty(),
+                Optional.of(workspaceDTO.getWorkspaceName()),
                 project.getId(),
                 project.getName(),
                 Optional.of(owner),
@@ -174,7 +177,7 @@ public class CollaboratorResourceMigration {
           if (!resources.isEmpty()) {
             GetResourcesResponseItem resourceDetails = resources.get(0);
             roleService.createWorkspacePermissions(
-                resourceDetails.getWorkspaceId(),
+                Optional.of(resourceDetails.getWorkspaceId()),
                 Optional.empty(),
                 project.getId(),
                 project.getName(),
@@ -187,7 +190,7 @@ public class CollaboratorResourceMigration {
         }
         if (migrated) {
           deleteRoleBindingsForProjects(Collections.singletonList(project));
-          try (Session session1 = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+          try (Session session1 = modelDBHibernateUtil.getSessionFactory().openSession()) {
             Transaction transaction = null;
             try {
               transaction = session1.beginTransaction();
@@ -216,7 +219,7 @@ public class CollaboratorResourceMigration {
 
     LOGGER.debug("Total Repositories to migrate {}", count);
 
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       CriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
 
       CriteriaQuery<RepositoryEntity> criteriaQuery =
@@ -288,7 +291,8 @@ public class CollaboratorResourceMigration {
           // ignore the CollaboratorType
           try {
             roleService.createWorkspacePermissions(
-                workspaceDTO.getWorkspaceName(),
+                Optional.empty(),
+                Optional.of(workspaceDTO.getWorkspaceName()),
                 String.valueOf(repository.getId()),
                 repository.getName(),
                 Optional.of(Long.parseLong(repository.getOwner())),
@@ -332,7 +336,7 @@ public class CollaboratorResourceMigration {
             GetResourcesResponseItem resourceDetails =
                 responseItemMap.get(String.valueOf(repository.getId()));
             roleService.createWorkspacePermissions(
-                resourceDetails.getWorkspaceId(),
+                Optional.of(resourceDetails.getWorkspaceId()),
                 Optional.empty(),
                 String.valueOf(repository.getId()),
                 repository.getName(),
@@ -345,7 +349,7 @@ public class CollaboratorResourceMigration {
         }
         if (migrated) {
           deleteRoleBindingsOfRepositories(Collections.singletonList(repository));
-          try (Session session1 = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+          try (Session session1 = modelDBHibernateUtil.getSessionFactory().openSession()) {
             Transaction transaction = null;
             try {
               transaction = session1.beginTransaction();
@@ -369,7 +373,7 @@ public class CollaboratorResourceMigration {
   }
 
   private static <T> Long getEntityCount(Class<T> klass) {
-    try (Session session = ModelDBHibernateUtil.getSessionFactory().openSession()) {
+    try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       CriteriaBuilder criteriaBuilder = session.getCriteriaBuilder();
       CriteriaQuery<Long> countQuery = criteriaBuilder.createQuery(Long.class);
       Root<T> root = countQuery.from(klass);

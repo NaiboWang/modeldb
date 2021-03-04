@@ -8,6 +8,7 @@ import ai.verta.modeldb.authservice.RoleService;
 import ai.verta.modeldb.common.authservice.AuthService;
 import ai.verta.modeldb.common.dto.UserInfoPaginationDTO;
 import ai.verta.modeldb.common.exceptions.ModelDBException;
+import ai.verta.modeldb.config.Config;
 import ai.verta.modeldb.entities.*;
 import ai.verta.modeldb.entities.config.ConfigBlobEntity;
 import ai.verta.modeldb.entities.config.HyperparameterElementMappingEntity;
@@ -129,12 +130,22 @@ public class RdbmsUtils {
     LOGGER.trace("Converting AttributeEntityListFromAttributes ");
     List<KeyValue> attributeList = new ArrayList<>();
     if (attributeEntityList != null) {
-      for (AttributeEntity attribute : attributeEntityList) {
-        attributeList.add(attribute.getProtoObj());
-      }
+      attributeList =
+          attributeEntityList.stream()
+              .map(RdbmsUtils::getKeyValueFromAttributeEntity)
+              .sorted(Comparator.comparing(KeyValue::getKey))
+              .collect(Collectors.toList());
     }
     LOGGER.trace("Converted AttributeEntityListFromAttributes ");
     return attributeList;
+  }
+
+  private static KeyValue getKeyValueFromAttributeEntity(AttributeEntity attributeEntity) {
+    try {
+      return attributeEntity.getProtoObj();
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public static KeyValueEntity generateKeyValueEntity(
@@ -161,12 +172,22 @@ public class RdbmsUtils {
     LOGGER.trace("Converting KeyValueEntityListFromKeyValues ");
     List<KeyValue> attributeList = new ArrayList<>();
     if (keyValueEntityList != null) {
-      for (KeyValueEntity keyValue : keyValueEntityList) {
-        attributeList.add(keyValue.getProtoKeyValue());
-      }
+      attributeList =
+          keyValueEntityList.stream()
+              .map(RdbmsUtils::getKeyValueFromKeyValueEntity)
+              .sorted(Comparator.comparing(KeyValue::getKey))
+              .collect(Collectors.toList());
     }
     LOGGER.trace("Converted KeyValueEntityListFromKeyValues ");
     return attributeList;
+  }
+
+  private static KeyValue getKeyValueFromKeyValueEntity(KeyValueEntity keyValueEntity) {
+    try {
+      return keyValueEntity.getProtoKeyValue();
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public static ArtifactEntity generateArtifactEntity(
@@ -190,6 +211,7 @@ public class RdbmsUtils {
     if (artifactEntityList != null) {
       return artifactEntityList.stream()
           .map(ArtifactEntity::getProtoObject)
+          .sorted(Comparator.comparing(Artifact::getKey))
           .collect(Collectors.toList());
     }
     return Collections.emptyList();
@@ -270,12 +292,31 @@ public class RdbmsUtils {
     List<Observation> observationList = new ArrayList<>();
     LOGGER.trace("Converting ObservationEntityListFromObservations");
     if (observationEntityList != null) {
-      for (ObservationEntity observation : observationEntityList) {
-        observationList.add(observation.getProtoObject());
-      }
+      observationList =
+          observationEntityList.stream()
+              .map(RdbmsUtils::getObservationFromObservationEntity)
+              .sorted(Comparator.comparing(RdbmsUtils::getObservationCompareKey))
+              .collect(Collectors.toList());
     }
     LOGGER.trace("Converted ObservationEntityListFromObservations");
     return observationList;
+  }
+
+  private static String getObservationCompareKey(Observation observation) {
+    if (observation.hasArtifact()) {
+      return observation.getArtifact().getKey();
+    } else {
+      return observation.getAttribute().getKey();
+    }
+  }
+
+  private static Observation getObservationFromObservationEntity(
+      ObservationEntity observationEntity) {
+    try {
+      return observationEntity.getProtoObject();
+    } catch (InvalidProtocolBufferException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   public static List<TagsMapping> convertTagListFromTagMappingList(
@@ -314,6 +355,7 @@ public class RdbmsUtils {
     if (featureEntities != null) {
       return featureEntities.stream()
           .map(FeatureEntity::getProtoObject)
+          .sorted(Comparator.comparing(Feature::getName))
           .collect(Collectors.toList());
     }
     return Collections.emptyList();
@@ -716,7 +758,7 @@ public class RdbmsUtils {
         //            		builder.function("DECIMAL", BigDecimal.class,
         // builder.literal(10),builder.literal(10))),
         //            operator, value.getNumberValue());
-        if (ModelDBHibernateUtil.config.RdbConfiguration.isPostgres()) {
+        if (Config.getInstance().database.RdbConfiguration.isPostgres()) {
           if (stringColumn) {
 
             return getOperatorPredicate(

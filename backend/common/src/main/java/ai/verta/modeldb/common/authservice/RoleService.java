@@ -30,11 +30,16 @@ public interface RoleService {
       CollaboratorPermissions permissions,
       ResourceVisibility resourceVisibility);
 
-  boolean deleteEntityResources(
+  boolean deleteEntityResourcesWithServiceUser(
       List<String> entityIds, ModelDBServiceResourceTypes modelDBServiceResourceTypes);
 
   GetResourcesResponseItem getEntityResource(
-      String entityId, ModelDBServiceResourceTypes modelDBServiceResourceTypes);
+          Optional<String> entityId, Optional<String> workspaceName, ModelDBServiceResourceTypes modelDBServiceResourceTypes);
+
+  GetResourcesResponseItem getEntityResource(
+          String entityId, ModelDBServiceResourceTypes modelDBServiceResourceTypes);
+
+  List<GetResourcesResponseItem> getEntityResourcesByName(Optional<String> entityName, Optional<String> workspaceName, ModelDBServiceResourceTypes modelDBServiceResourceTypes);
 
   GeneratedMessageV3 getOrgById(String orgId);
 
@@ -94,6 +99,13 @@ public interface RoleService {
 
   void createRoleBinding(
           Role role,
+          CollaboratorBase collaborator,
+          String resourceId,
+          ModelDBServiceResourceTypes modelDBServiceResourceTypes);
+
+  void createRoleBinding(
+          String roleName,
+          RoleScope roleBindingScope,
           CollaboratorBase collaborator,
           String resourceId,
           ModelDBServiceResourceTypes modelDBServiceResourceTypes);
