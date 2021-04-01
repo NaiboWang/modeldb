@@ -3,9 +3,11 @@ package ai.verta.modeldb;
 import ai.verta.artifactstore.ArtifactStoreGrpc;
 import ai.verta.modeldb.common.authservice.AuthInterceptor;
 import ai.verta.modeldb.common.authservice.AuthService;
+import ai.verta.modeldb.common.monitoring.AuditLogInterceptor;
 import ai.verta.modeldb.config.Config;
 import ai.verta.modeldb.cron_jobs.DeleteEntitiesCron;
 import ai.verta.modeldb.metadata.MetadataServiceGrpc;
+import ai.verta.modeldb.reconcilers.ReconcilerInitializer;
 import ai.verta.modeldb.versioning.VersioningServiceGrpc;
 import ai.verta.uac.CollaboratorServiceGrpc;
 import ai.verta.uac.OrganizationServiceGrpc;
@@ -79,6 +81,8 @@ public class TestsInit {
 
     App.initializeBackendServices(serverBuilder, services, daos);
     serverBuilder.intercept(new AuthInterceptor());
+    serverBuilder.intercept(new AuditLogInterceptor(true));
+    ReconcilerInitializer.initialize(config, services);
 
     if (config.test != null) {
       authClientInterceptor = new AuthClientInterceptor(config.test);

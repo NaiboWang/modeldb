@@ -83,13 +83,11 @@ public abstract class CommonHibernateUtil {
         settings.put(Environment.DIALECT, rdb.RdbDialect);
         settings.put(Environment.HBM2DDL_AUTO, "validate");
         settings.put(Environment.SHOW_SQL, "false");
-        settings.put("hibernate.c3p0.testConnectionOnCheckin", "true");
-        // Reduce this time period if stale connections still exist
-        settings.put("hibernate.c3p0.idleConnectionTestPeriod", "100");
-        settings.put("hibernate.c3p0.preferredTestQuery", "Select 1");
-        settings.put(Environment.C3P0_MIN_SIZE, config.minConnectionPoolSize);
-        settings.put(Environment.C3P0_MAX_SIZE, config.maxConnectionPoolSize);
-        settings.put(Environment.C3P0_TIMEOUT, config.connectionTimeout);
+        settings.put("hibernate.hikari.maxLifetime", config.maxLifetime);
+        settings.put("hibernate.hikari.idleTimeout", config.idleTimeout);
+        settings.put("hibernate.hikari.minimumIdle", config.minConnectionPoolSize);
+        settings.put("hibernate.hikari.maximumPoolSize", config.maxConnectionPoolSize);
+        settings.put("hibernate.hikari.connectionTimeout", config.connectionTimeout);
         settings.put(Environment.QUERY_PLAN_CACHE_MAX_SIZE, 200);
         settings.put(Environment.QUERY_PLAN_CACHE_PARAMETER_METADATA_MAX_SIZE, 20);
         configuration.setProperties(settings);
@@ -271,7 +269,7 @@ public abstract class CommonHibernateUtil {
   }
 
   public void createTablesLiquibaseMigration(
-      DatabaseConfig config, String changeSetToRevertUntilTag)
+      DatabaseConfig config, String changeSetToRevertUntilTag, String liquibaseRootPath)
       throws LiquibaseException, SQLException, InterruptedException, ClassNotFoundException {
     RdbConfig rdb = config.RdbConfiguration;
 
@@ -287,7 +285,7 @@ public abstract class CommonHibernateUtil {
       // Initialize Liquibase and run the update
       Database database = DatabaseFactory.getInstance().findCorrectDatabaseImplementation(jdbcCon);
       String rootPath = System.getProperty(CommonConstants.userDir);
-      rootPath = rootPath + liquibaseRootFilePath;
+      rootPath = rootPath + liquibaseRootPath;
       Liquibase liquibase = new Liquibase(rootPath, new FileSystemResourceAccessor(), database);
 
       boolean liquibaseExecuted = false;
@@ -457,6 +455,11 @@ public abstract class CommonHibernateUtil {
 
   public void runLiquibaseMigration(DatabaseConfig config)
       throws InterruptedException, LiquibaseException, SQLException, ClassNotFoundException {
+    runLiquibaseMigration(config, liquibaseRootFilePath);
+  }
+
+  public void runLiquibaseMigration(DatabaseConfig config, String liquibaseRootPath)
+      throws InterruptedException, LiquibaseException, SQLException, ClassNotFoundException {
     // Change liquibase default table names
     System.getProperties().put("liquibase.databaseChangeLogTableName", "database_change_log");
     System.getProperties()
@@ -482,7 +485,7 @@ public abstract class CommonHibernateUtil {
     releaseLiquibaseLock(config);
 
     // Run tables liquibase migration
-    createTablesLiquibaseMigration(config, config.changeSetToRevertUntilTag);
+    createTablesLiquibaseMigration(config, config.changeSetToRevertUntilTag, liquibaseRootPath);
   }
 
   public void createDBIfNotExists(RdbConfig rdb) throws SQLException {

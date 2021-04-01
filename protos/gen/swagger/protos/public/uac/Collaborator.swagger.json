@@ -398,7 +398,8 @@
               "ORGANIZATION",
               "TEAM",
               "WORKSPACE",
-              "USER"
+              "USER",
+              "SERVICE_ACCOUNT"
             ],
             "default": "UNKNOWN"
           },
@@ -418,7 +419,8 @@
               "DASHBOARD",
               "REPOSITORY",
               "REGISTERED_MODEL",
-              "REGISTERED_MODEL_VERSION"
+              "REGISTERED_MODEL_VERSION",
+              "MONITORED_ENTITY"
             ],
             "default": "UNKNOWN"
           },
@@ -537,7 +539,8 @@
               "ORGANIZATION",
               "TEAM",
               "WORKSPACE",
-              "USER"
+              "USER",
+              "SERVICE_ACCOUNT"
             ],
             "default": "UNKNOWN"
           },
@@ -557,7 +560,8 @@
               "DASHBOARD",
               "REPOSITORY",
               "REGISTERED_MODEL",
-              "REGISTERED_MODEL_VERSION"
+              "REGISTERED_MODEL_VERSION",
+              "MONITORED_ENTITY"
             ],
             "default": "UNKNOWN"
           },
@@ -936,7 +940,8 @@
         "ORGANIZATION",
         "TEAM",
         "WORKSPACE",
-        "USER"
+        "USER",
+        "SERVICE_ACCOUNT"
       ],
       "default": "UNKNOWN"
     },
@@ -1023,7 +1028,8 @@
         "DASHBOARD",
         "REPOSITORY",
         "REGISTERED_MODEL",
-        "REGISTERED_MODEL_VERSION"
+        "REGISTERED_MODEL_VERSION",
+        "MONITORED_ENTITY"
       ],
       "default": "UNKNOWN"
     },

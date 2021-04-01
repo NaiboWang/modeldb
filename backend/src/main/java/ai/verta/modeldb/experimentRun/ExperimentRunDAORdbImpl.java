@@ -7,6 +7,7 @@ import ai.verta.common.ModelDBResourceEnum.ModelDBServiceResourceTypes;
 import ai.verta.modeldb.*;
 import ai.verta.modeldb.CommitArtifactPart.Response;
 import ai.verta.modeldb.authservice.RoleService;
+import ai.verta.modeldb.common.CommonUtils;
 import ai.verta.modeldb.common.authservice.AuthService;
 import ai.verta.modeldb.common.collaborator.CollaboratorUser;
 import ai.verta.modeldb.common.exceptions.AlreadyExistsException;
@@ -23,7 +24,8 @@ import ai.verta.modeldb.entities.dataset.PathDatasetComponentBlobEntity;
 import ai.verta.modeldb.entities.versioning.CommitEntity;
 import ai.verta.modeldb.entities.versioning.RepositoryEntity;
 import ai.verta.modeldb.entities.versioning.VersioningModeldbEntityMapping;
-import ai.verta.modeldb.exceptions.*;
+import ai.verta.modeldb.exceptions.PermissionDeniedException;
+import ai.verta.modeldb.exceptions.UnimplementedException;
 import ai.verta.modeldb.metadata.MetadataDAO;
 import ai.verta.modeldb.project.ProjectDAO;
 import ai.verta.modeldb.utils.ModelDBHibernateUtil;
@@ -31,11 +33,7 @@ import ai.verta.modeldb.utils.ModelDBUtils;
 import ai.verta.modeldb.utils.RdbmsUtils;
 import ai.verta.modeldb.utils.TrialUtils;
 import ai.verta.modeldb.versioning.*;
-import ai.verta.uac.GetResourcesResponseItem;
-import ai.verta.uac.ModelDBActionEnum;
-import ai.verta.uac.Role;
-import ai.verta.uac.UserInfo;
-import ai.verta.uac.Workspace;
+import ai.verta.uac.*;
 import com.amazonaws.services.s3.model.PartETag;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -272,7 +270,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
    * @throws ModelDBException ModelDBException
    */
   private Map<String, Map.Entry<BlobExpanded, String>> validateVersioningEntity(
-      Session session, VersioningEntry versioningEntry) throws ModelDBException {
+      Session session, VersioningEntry versioningEntry)
+      throws ModelDBException, ExecutionException, InterruptedException {
     String errorMessage = null;
     if (versioningEntry.getRepositoryId() == 0L) {
       errorMessage = "Repository Id not found in VersioningEntry";
@@ -316,7 +315,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
   @Override
   public ExperimentRun insertExperimentRun(
       ProjectDAO projectDAO, ExperimentRun experimentRun, UserInfo userInfo)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     checkIfEntityAlreadyExists(experimentRun, true);
     createRoleBindingsForExperimentRun(experimentRun, userInfo);
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
@@ -361,9 +361,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
   }
 
   private void createRoleBindingsForExperimentRun(ExperimentRun experimentRun, UserInfo userInfo) {
-    Role ownerRole = roleService.getRoleByName(ModelDBConstants.ROLE_EXPERIMENT_RUN_OWNER, null);
     roleService.createRoleBinding(
-        ownerRole,
+        ModelDBConstants.ROLE_EXPERIMENT_RUN_OWNER,
         new CollaboratorUser(authService, userInfo),
         experimentRun.getId(),
         ModelDBServiceResourceTypes.EXPERIMENT_RUN);
@@ -537,7 +536,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
 
   @Override
   public ExperimentRun getExperimentRun(String experimentRunId)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ExperimentRunEntity experimentRunEntity =
           session.get(ExperimentRunEntity.class, experimentRunId);
@@ -557,7 +557,7 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
   }
 
   private ExperimentRun populateFieldsBasedOnPrivileges(ExperimentRun experimentRun)
-      throws ModelDBException {
+      throws ModelDBException, ExecutionException, InterruptedException {
     if (config.populateConnectionsBasedOnPrivileges) {
       if (experimentRun.getDatasetsCount() > 0) {
         experimentRun = checkDatasetVersionBasedOnPrivileges(experimentRun, false);
@@ -575,7 +575,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
    * @param errorOut : Throw error while creation (true) otherwise we will keep it silent (false)
    */
   private ExperimentRun checkDatasetVersionBasedOnPrivileges(
-      ExperimentRun experimentRun, boolean errorOut) throws ModelDBException {
+      ExperimentRun experimentRun, boolean errorOut)
+      throws ModelDBException, ExecutionException, InterruptedException {
     ExperimentRun.Builder experimentRunBuilder = experimentRun.toBuilder();
     List<Artifact> accessibleDatasetVersions =
         getPrivilegedDatasets(experimentRun.getDatasetsList(), errorOut);
@@ -590,7 +591,7 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
    * @throws ModelDBException: modelDBException
    */
   private List<Artifact> getPrivilegedDatasets(List<Artifact> newDatasets, boolean errorOut)
-      throws ModelDBException {
+      throws ModelDBException, ExecutionException, InterruptedException {
     List<Artifact> accessibleDatasets = new ArrayList<>();
     List<String> accessibleDatasetVersionIds = new ArrayList<>();
     for (Artifact dataset : newDatasets) {
@@ -669,7 +670,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
   @Override
   public ExperimentRun updateExperimentRunDescription(
       String experimentRunId, String experimentRunDescription)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ExperimentRunEntity experimentRunEntity =
           session.load(ExperimentRunEntity.class, experimentRunId, LockMode.PESSIMISTIC_WRITE);
@@ -747,7 +749,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
 
   @Override
   public ExperimentRun addExperimentRunTags(String experimentRunId, List<String> tagsList)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ExperimentRunEntity experimentRunObj =
           session.get(ExperimentRunEntity.class, experimentRunId, LockMode.PESSIMISTIC_WRITE);
@@ -786,7 +789,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
   @Override
   public ExperimentRun deleteExperimentRunTags(
       String experimentRunId, List<String> experimentRunTagList, Boolean deleteAll)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Transaction transaction = session.beginTransaction();
       if (deleteAll) {
@@ -945,7 +949,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
 
   @Override
   public List<Artifact> getExperimentRunDatasets(String experimentRunId)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ExperimentRunEntity experimentRunObj =
           session.get(ExperimentRunEntity.class, experimentRunId);
@@ -967,7 +972,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
 
   @Override
   public void logDatasets(String experimentRunId, List<Artifact> newDatasets, boolean overwrite)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ExperimentRunEntity experimentRunEntityObj =
           session.get(ExperimentRunEntity.class, experimentRunId, LockMode.PESSIMISTIC_WRITE);
@@ -1755,7 +1761,7 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
           codeBlobMap = new LinkedHashMap<>();
         }
         Location.Builder locationBuilder = Location.newBuilder();
-        ModelDBUtils.getProtoObjectFromString(versioningLocation, locationBuilder);
+        CommonUtils.getProtoObjectFromString(versioningLocation, locationBuilder);
         codeBlobMap.put(
             ModelDBUtils.getLocationWithSlashOperator(locationBuilder.getLocationList()),
             codeVersionBuilder.build());
@@ -2126,7 +2132,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
 
   @Override
   public void logVersionedInput(LogVersionedInput request)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       VersioningEntry versioningEntry = request.getVersionedInputs();
       Map<String, Map.Entry<BlobExpanded, String>> locationBlobWithHashMap =
@@ -2296,7 +2303,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
       ListCommitExperimentRunsRequest request,
       RepositoryFunction repositoryFunction,
       CommitFunction commitFunction)
-      throws ModelDBException, InvalidProtocolBufferException {
+      throws ModelDBException, InvalidProtocolBufferException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repositoryEntity = repositoryFunction.apply(session);
       CommitEntity commitEntity = commitFunction.apply(session, session1 -> repositoryEntity);
@@ -2330,10 +2338,12 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
             request.getRepositoryId().getNamedId().getWorkspaceName());
       } else {
         GetResourcesResponseItem entityResource =
-            roleService.getEntityResource(
-                Optional.of(String.valueOf(request.getRepositoryId().getRepoId())),
-                Optional.empty(),
-                ModelDBServiceResourceTypes.REPOSITORY);
+            roleService
+                .getEntityResource(
+                    Optional.of(String.valueOf(request.getRepositoryId().getRepoId())),
+                    Optional.empty(),
+                    ModelDBServiceResourceTypes.REPOSITORY)
+                .get();
         Workspace workspace = authService.workspaceById(true, entityResource.getWorkspaceId());
         if (workspace != null) {
           findExperimentRuns.setWorkspaceName(
@@ -2363,7 +2373,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
       ListBlobExperimentRunsRequest request,
       RepositoryFunction repositoryFunction,
       CommitFunction commitFunction)
-      throws ModelDBException, InvalidProtocolBufferException {
+      throws ModelDBException, InvalidProtocolBufferException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       RepositoryEntity repositoryEntity = repositoryFunction.apply(session);
       CommitEntity commitEntity = commitFunction.apply(session, session1 -> repositoryEntity);
@@ -2410,10 +2421,12 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
             request.getRepositoryId().getNamedId().getWorkspaceName());
       } else {
         GetResourcesResponseItem entityResource =
-            roleService.getEntityResource(
-                Optional.of(String.valueOf(request.getRepositoryId().getRepoId())),
-                Optional.empty(),
-                ModelDBServiceResourceTypes.REPOSITORY);
+            roleService
+                .getEntityResource(
+                    Optional.of(String.valueOf(request.getRepositoryId().getRepoId())),
+                    Optional.empty(),
+                    ModelDBServiceResourceTypes.REPOSITORY)
+                .get();
         Workspace workspace = authService.workspaceById(true, entityResource.getWorkspaceId());
         if (workspace != null) {
           findExperimentRuns.setWorkspaceName(
@@ -2659,7 +2672,7 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
       List<String> experimentRunKeyValuesKeys,
       Boolean deleteAll,
       String fieldType)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     String projectId = getProjectIdByExperimentRunId(experimentRunId);
     // Validate if current user has access to the entity or not
     roleService.validateEntityUserWithUserInfo(
@@ -2694,7 +2707,7 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
   @Override
   public void deleteExperimentRunObservationsEntities(
       String experimentRunId, List<String> experimentRunObservationsKeys, Boolean deleteAll)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     String projectId = getProjectIdByExperimentRunId(experimentRunId);
     // Validate if current user has access to the entity or not
     roleService.validateEntityUserWithUserInfo(
@@ -2801,7 +2814,8 @@ public class ExperimentRunDAORdbImpl implements ExperimentRunDAO {
   @Override
   public ExperimentRun cloneExperimentRun(
       ProjectDAO projectDAO, CloneExperimentRun cloneExperimentRun, UserInfo userInfo)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     ExperimentRun srcExperimentRun = getExperimentRun(cloneExperimentRun.getSrcExperimentRunId());
 
     // Validate if current user has access to the entity or not

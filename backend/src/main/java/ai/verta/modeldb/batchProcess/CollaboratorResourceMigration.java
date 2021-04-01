@@ -11,6 +11,7 @@ import ai.verta.modeldb.authservice.RoleService;
 import ai.verta.modeldb.authservice.RoleServiceUtils;
 import ai.verta.modeldb.common.CommonUtils;
 import ai.verta.modeldb.common.authservice.AuthService;
+import ai.verta.modeldb.common.connections.UAC;
 import ai.verta.modeldb.config.Config;
 import ai.verta.modeldb.dto.WorkspaceDTO;
 import ai.verta.modeldb.entities.ProjectEntity;
@@ -42,6 +43,7 @@ public class CollaboratorResourceMigration {
       ModelDBHibernateUtil.getInstance();
   private static final String REPOSITORY_GLOBAL_SHARING = "_REPO_GLOBAL_SHARING";
   private static AuthService authService;
+  private static UAC uac;
   private static RoleService roleService;
   private static int paginationSize;
 
@@ -51,7 +53,8 @@ public class CollaboratorResourceMigration {
     CollaboratorResourceMigration.paginationSize = 100;
     if (Config.getInstance().hasAuth()) {
       authService = AuthServiceUtils.FromConfig(Config.getInstance());
-      roleService = RoleServiceUtils.FromConfig(Config.getInstance(), authService);
+      uac = UAC.FromConfig(Config.getInstance());
+      roleService = RoleServiceUtils.FromConfig(Config.getInstance(), authService, uac);
     } else {
       LOGGER.debug("AuthService Host & Port not found, OSS setup found");
       return;

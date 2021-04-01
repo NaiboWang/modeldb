@@ -4,6 +4,9 @@ import ai.verta.modeldb.common.exceptions.InternalErrorException;
 import ai.verta.modeldb.common.exceptions.ModelDBException;
 import ai.verta.modeldb.common.exceptions.UnavailableException;
 import com.google.protobuf.GeneratedMessageV3;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.Message;
+import com.google.protobuf.util.JsonFormat;
 import com.google.rpc.Code;
 import com.google.rpc.Status;
 import io.grpc.StatusRuntimeException;
@@ -84,6 +87,12 @@ public class CommonUtils {
         CommonConstants.BACKGROUND_UTILS_COUNT, Integer.toString(backgroundUtilsCount));
   }
 
+  public static Message.Builder getProtoObjectFromString(String jsonString, Message.Builder builder)
+      throws InvalidProtocolBufferException {
+    JsonFormat.parser().merge(jsonString, builder);
+    return builder;
+  }
+
   public interface RetryCallInterface<T> {
     T retryCall(boolean retry);
   }
@@ -112,12 +121,12 @@ public class CommonUtils {
     throw ex;
   }
 
-  public static StatusRuntimeException logError(Exception e) {
+  public static StatusRuntimeException logError(Throwable e) {
     return logError(e, null);
   }
 
   public static <T extends GeneratedMessageV3> StatusRuntimeException logError(
-          Exception e, T defaultInstance) {
+          Throwable e, T defaultInstance) {
     Status status;
     StatusRuntimeException statusRuntimeException;
     if (e instanceof StatusRuntimeException) {
@@ -176,6 +185,11 @@ public class CommonUtils {
     }
 
     return statusRuntimeException;
+  }
+
+  public static <T extends GeneratedMessageV3> void observeError(
+          StreamObserver<T> responseObserver, Throwable e) {
+    responseObserver.onError(logError(e));
   }
 
   public static <T extends GeneratedMessageV3> void observeError(

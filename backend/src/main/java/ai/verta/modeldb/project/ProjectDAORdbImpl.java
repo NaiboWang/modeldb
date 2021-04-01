@@ -32,6 +32,10 @@ import ai.verta.uac.ModelDBActionEnum.ModelDBServiceActions;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Value;
 import com.google.rpc.Code;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+import javax.persistence.criteria.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.hibernate.LockMode;
@@ -39,10 +43,6 @@ import org.hibernate.LockOptions;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 import org.hibernate.query.Query;
-
-import javax.persistence.criteria.*;
-import java.util.*;
-import java.util.stream.Collectors;
 
 public class ProjectDAORdbImpl implements ProjectDAO {
 
@@ -216,13 +216,13 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project insertProject(CreateProject createProjectRequest, UserInfo userInfo)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     Project project = getProjectFromRequest(createProjectRequest, userInfo);
     return insertProject(project, createProjectRequest.getWorkspaceName(), userInfo);
   }
 
   private Project insertProject(Project project, String workspaceName, UserInfo userInfo)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Workspace workspace = roleService.getWorkspaceByWorkspaceName(userInfo, workspaceName);
 
@@ -268,7 +268,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       transaction.commit();
       LOGGER.debug("Project created successfully");
       TelemetryUtils.insertModelDBDeploymentInfo();
-      return projectEntity.getProtoObject(roleService, authService);
+      return projectEntity.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return insertProject(project, workspaceName, userInfo);
@@ -280,7 +280,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project updateProjectDescription(String projectId, String projectDescription)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ProjectEntity projectEntity =
           session.load(ProjectEntity.class, projectId, LockMode.PESSIMISTIC_WRITE);
@@ -290,7 +290,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       session.update(projectEntity);
       transaction.commit();
       LOGGER.debug("Project description updated successfully");
-      return projectEntity.getProtoObject(roleService, authService);
+      return projectEntity.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return updateProjectDescription(projectId, projectDescription);
@@ -302,7 +302,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project updateProjectReadme(String projectId, String projectReadme)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ProjectEntity projectEntity =
           session.load(ProjectEntity.class, projectId, LockMode.PESSIMISTIC_WRITE);
@@ -312,7 +312,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       session.update(projectEntity);
       transaction.commit();
       LOGGER.debug("Project readme updated successfully");
-      return projectEntity.getProtoObject(roleService, authService);
+      return projectEntity.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return updateProjectReadme(projectId, projectReadme);
@@ -324,7 +324,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project logProjectCodeVersion(String projectId, CodeVersion updatedCodeVersion)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ProjectEntity projectEntity =
           session.get(ProjectEntity.class, projectId, LockMode.PESSIMISTIC_WRITE);
@@ -355,7 +355,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       session.update(projectEntity);
       transaction.commit();
       LOGGER.debug("Project code version snapshot updated successfully");
-      return projectEntity.getProtoObject(roleService, authService);
+      return projectEntity.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return logProjectCodeVersion(projectId, updatedCodeVersion);
@@ -367,7 +367,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project updateProjectAttributes(String projectId, KeyValue attribute)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ProjectEntity projectObj =
           session.get(ProjectEntity.class, projectId, LockMode.PESSIMISTIC_WRITE);
@@ -401,7 +401,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       Transaction transaction = session.beginTransaction();
       session.saveOrUpdate(projectObj);
       transaction.commit();
-      return projectObj.getProtoObject(roleService, authService);
+      return projectObj.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return updateProjectAttributes(projectId, attribute);
@@ -414,7 +414,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
   @Override
   public List<KeyValue> getProjectAttributes(
       String projectId, List<String> attributeKeyList, Boolean getAll)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       if (getAll) {
         ProjectEntity projectObj = session.get(ProjectEntity.class, projectId);
@@ -422,7 +422,9 @@ public class ProjectDAORdbImpl implements ProjectDAO {
           String errorMessage = "Project not found for given ID: " + projectId;
           throw new NotFoundException(errorMessage);
         }
-        return projectObj.getProtoObject(roleService, authService).getAttributesList();
+        return projectObj
+            .getProtoObject(roleService, authService, new HashMap<>())
+            .getAttributesList();
       } else {
         Query query = session.createQuery(GET_PROJECT_ATTR_BY_KEYS_HQL);
         query.setParameterList("keys", attributeKeyList);
@@ -444,7 +446,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project addProjectTags(String projectId, List<String> tagsList)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ProjectEntity projectObj =
           session.get(ProjectEntity.class, projectId, LockMode.PESSIMISTIC_WRITE);
@@ -453,7 +455,9 @@ public class ProjectDAORdbImpl implements ProjectDAO {
         throw new NotFoundException(errorMessage);
       }
       List<String> newTags = new ArrayList<>();
-      Project existingProtoProjectObj = projectObj.getProtoObject(roleService, authService);
+      Map<Long, Workspace> cacheWorkspaceMap = new HashMap<>();
+      Project existingProtoProjectObj =
+          projectObj.getProtoObject(roleService, authService, cacheWorkspaceMap);
       for (String tag : tagsList) {
         if (!existingProtoProjectObj.getTagsList().contains(tag)) {
           newTags.add(tag);
@@ -469,7 +473,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
         transaction.commit();
       }
       LOGGER.debug("Project tags added successfully");
-      return projectObj.getProtoObject(roleService, authService);
+      return projectObj.getProtoObject(roleService, authService, cacheWorkspaceMap);
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return addProjectTags(projectId, tagsList);
@@ -481,7 +485,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project deleteProjectTags(String projectId, List<String> projectTagList, Boolean deleteAll)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Transaction transaction = session.beginTransaction();
 
@@ -507,7 +511,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       session.update(projectObj);
       transaction.commit();
       LOGGER.debug("Project tags deleted successfully");
-      return projectObj.getProtoObject(roleService, authService);
+      return projectObj.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return deleteProjectTags(projectId, projectTagList, deleteAll);
@@ -525,7 +529,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       Boolean order,
       String sortKey,
       ResourceVisibility projectVisibility)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
 
     FindProjects findProjects =
         FindProjects.newBuilder()
@@ -539,7 +543,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public List<Project> getProjects(String key, String value, UserInfo userInfo)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     FindProjects findProjects =
         FindProjects.newBuilder()
             .addPredicates(
@@ -558,7 +562,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project addProjectAttributes(String projectId, List<KeyValue> attributesList)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ProjectEntity projectObj =
           session.get(ProjectEntity.class, projectId, LockMode.PESSIMISTIC_WRITE);
@@ -570,7 +574,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       session.saveOrUpdate(projectObj);
       transaction.commit();
       LOGGER.debug("Project attributes added successfully");
-      return projectObj.getProtoObject(roleService, authService);
+      return projectObj.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return addProjectAttributes(projectId, attributesList);
@@ -583,7 +587,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
   @Override
   public Project deleteProjectAttributes(
       String projectId, List<String> attributeKeyList, Boolean deleteAll)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Transaction transaction = session.beginTransaction();
 
@@ -607,7 +611,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       projectObj.setDate_updated(Calendar.getInstance().getTimeInMillis());
       session.update(projectObj);
       transaction.commit();
-      return projectObj.getProtoObject(roleService, authService);
+      return projectObj.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return deleteProjectAttributes(projectId, attributeKeyList, deleteAll);
@@ -618,10 +622,11 @@ public class ProjectDAORdbImpl implements ProjectDAO {
   }
 
   @Override
-  public List<String> getProjectTags(String projectId) throws InvalidProtocolBufferException {
+  public List<String> getProjectTags(String projectId)
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       ProjectEntity projectObj = session.get(ProjectEntity.class, projectId);
-      return projectObj.getProtoObject(roleService, authService).getTagsList();
+      return projectObj.getProtoObject(roleService, authService, new HashMap<>()).getTagsList();
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return getProjectTags(projectId);
@@ -649,7 +654,8 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project deepCopyProjectForUser(String srcProjectID, UserInfo newOwner)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     // if no project id specified , default to the one captured from config.yaml
     // TODO: extend the starter project to be set of projects, so parameterizing this function makes
     // sense
@@ -773,7 +779,8 @@ public class ProjectDAORdbImpl implements ProjectDAO {
   }
 
   @Override
-  public Project getProjectByID(String id) throws InvalidProtocolBufferException {
+  public Project getProjectByID(String id)
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Query query = session.createQuery(GET_PROJECT_BY_ID_HQL);
       query.setParameter("id", id);
@@ -784,7 +791,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       }
       LOGGER.debug(ModelDBMessages.GETTING_PROJECT_BY_ID_MSG_STR);
 
-      return projectEntity.getProtoObject(roleService, authService);
+      return projectEntity.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return getProjectByID(id);
@@ -796,7 +803,8 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project setProjectShortName(String projectId, String projectShortName, UserInfo userInfo)
-      throws InvalidProtocolBufferException, ModelDBException {
+      throws InvalidProtocolBufferException, ModelDBException, ExecutionException,
+          InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       List<String> accessibleProjectIds =
           roleService.getSelfDirectlyAllowedResources(
@@ -819,7 +827,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       session.update(projectEntity);
       transaction.commit();
       LOGGER.debug(ModelDBMessages.GETTING_PROJECT_BY_ID_MSG_STR);
-      return projectEntity.getProtoObject(roleService, authService);
+      return projectEntity.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return setProjectShortName(projectId, projectShortName, userInfo);
@@ -832,7 +840,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
   @Override
   public List<Project> getPublicProjects(
       UserInfo hostUserInfo, UserInfo currentLoginUserInfo, String workspaceName)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     CollaboratorUser hostCollaboratorBase = null;
     if (hostUserInfo != null) {
       hostCollaboratorBase = new CollaboratorUser(authService, hostUserInfo);
@@ -863,7 +871,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       CollaboratorBase host,
       UserInfo currentLoginUserInfo,
       ResourceVisibility visibility)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
 
       CriteriaBuilder builder = session.getCriteriaBuilder();
@@ -1007,7 +1015,9 @@ public class ProjectDAORdbImpl implements ProjectDAO {
           if (queryParameters.getIdsOnly()) {
             finalProjects.add(Project.newBuilder().setId(projectEntity.getId()).build());
           } else {
-            finalProjects.add(projectEntity.getProtoObject(roleService, authService));
+            Map<Long, Workspace> cacheWorkspaceMap = new HashMap<>();
+            finalProjects.add(
+                projectEntity.getProtoObject(roleService, authService, cacheWorkspaceMap));
           }
         }
       }
@@ -1029,7 +1039,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project logArtifacts(String projectId, List<Artifact> newArtifacts)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Query query = session.createQuery(GET_PROJECT_BY_ID_HQL);
       query.setParameter("id", projectId);
@@ -1039,8 +1049,11 @@ public class ProjectDAORdbImpl implements ProjectDAO {
         throw new NotFoundException(errorMessage);
       }
 
+      Map<Long, Workspace> cacheWorkspaceMap = new HashMap<>();
       List<Artifact> existingArtifacts =
-          projectEntity.getProtoObject(roleService, authService).getArtifactsList();
+          projectEntity
+              .getProtoObject(roleService, authService, cacheWorkspaceMap)
+              .getArtifactsList();
       for (Artifact existingArtifact : existingArtifacts) {
         for (Artifact newArtifact : newArtifacts) {
           if (existingArtifact.getKey().equals(newArtifact.getKey())) {
@@ -1059,7 +1072,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       session.update(projectEntity);
       transaction.commit();
       LOGGER.debug(ModelDBMessages.GETTING_PROJECT_BY_ID_MSG_STR);
-      return projectEntity.getProtoObject(roleService, authService);
+      return projectEntity.getProtoObject(roleService, authService, cacheWorkspaceMap);
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return logArtifacts(projectId, newArtifacts);
@@ -1071,7 +1084,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public List<Artifact> getProjectArtifacts(String projectId)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Query query = session.createQuery(GET_PROJECT_BY_ID_HQL);
       query.setParameter("id", projectId);
@@ -1080,7 +1093,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
         String errorMessage = "Project not found for given ID: " + projectId;
         throw new NotFoundException(errorMessage);
       }
-      Project project = projectEntity.getProtoObject(roleService, authService);
+      Project project = projectEntity.getProtoObject(roleService, authService, new HashMap<>());
       if (project.getArtifactsList() != null && !project.getArtifactsList().isEmpty()) {
         LOGGER.debug("Project Artifacts getting successfully");
         return project.getArtifactsList();
@@ -1099,7 +1112,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
 
   @Override
   public Project deleteArtifacts(String projectId, String artifactKey)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
       Transaction transaction = session.beginTransaction();
 
@@ -1117,7 +1130,7 @@ public class ProjectDAORdbImpl implements ProjectDAO {
       projectObj.setDate_updated(Calendar.getInstance().getTimeInMillis());
       session.update(projectObj);
       transaction.commit();
-      return projectObj.getProtoObject(roleService, authService);
+      return projectObj.getProtoObject(roleService, authService, new HashMap<>());
     } catch (Exception ex) {
       if (ModelDBUtils.needToRetry(ex)) {
         return deleteArtifacts(projectId, artifactKey);

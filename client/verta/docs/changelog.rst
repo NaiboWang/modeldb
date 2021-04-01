@@ -37,6 +37,52 @@ Release Notes
      <>`__
 
 
+v0.17.4 (2021-03-26)
+--------------------
+
+New Features
+^^^^^^^^^^^^
+- `support logging structured data types as run attributes
+  <https://github.com/VertaAI/modeldb/pull/2057>`__
+- `support getting back structured data type attributes
+  <https://github.com/VertaAI/modeldb/pull/2062>`__
+- `enable manually specifying page limit for LazyList iteration
+  <https://github.com/VertaAI/modeldb/pull/2064>`__
+
+Bug Fixes
+^^^^^^^^^
+- `properly paginate LazyList requests
+  <https://github.com/VertaAI/modeldb/pull/2063>`__
+
+
+v0.17.3 (2021-03-17)
+--------------------
+
+New Features
+^^^^^^^^^^^^
+- `set and get lock levels on model versions
+  <https://github.com/VertaAI/modeldb/pull/2016>`__
+
+Enhancements
+^^^^^^^^^^^^
+- `add stage to model version repr
+  <https://github.com/VertaAI/modeldb/pull/2015>`__
+- `follow symlinks when collecting custom modules
+  <https://github.com/VertaAI/modeldb/pull/2026>`__
+
+Bug Fixes
+^^^^^^^^^
+- `properly propagate 403s/404s when updating registry entities
+  <https://github.com/VertaAI/modeldb/pull/2018>`__
+
+Internal Changes
+^^^^^^^^^^^^^^^^
+- `move verta._registry to verta.registry._entities
+  <https://github.com/VertaAI/modeldb/pull/2011>`__
+- `make client's debug cURL util more readable
+  <https://github.com/VertaAI/modeldb/pull/2030>`__
+
+
 v0.17.2 (2021-02-26)
 --------------------
 

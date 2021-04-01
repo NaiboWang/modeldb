@@ -3,7 +3,6 @@ package ai.verta.modeldb.config;
 import ai.verta.modeldb.ModelDBConstants;
 import ai.verta.modeldb.common.CommonUtils;
 import ai.verta.modeldb.common.config.InvalidConfigException;
-import ai.verta.modeldb.common.config.ServiceUserConfig;
 import ai.verta.modeldb.common.exceptions.InternalErrorException;
 import ai.verta.modeldb.common.exceptions.ModelDBException;
 import java.io.FileInputStream;
@@ -15,7 +14,6 @@ import org.yaml.snakeyaml.constructor.Constructor;
 public class Config extends ai.verta.modeldb.common.config.Config {
 
   private static Config config = null;
-  public ServiceUserConfig mdb_service_user;
   public String starterProject;
   public ArtifactStoreConfig artifactStoreConfig;
   public TelemetryConfig telemetry;
@@ -49,8 +47,8 @@ public class Config extends ai.verta.modeldb.common.config.Config {
       throw new InvalidConfigException("artifactStoreConfig", MISSING_REQUIRED);
     artifactStoreConfig.Validate("artifactStoreConfig");
 
-    if (mdb_service_user != null) {
-      mdb_service_user.Validate("mdb_service_user");
+    if (service_user != null) {
+      service_user.Validate("service_user");
     }
 
     if (telemetry == null) telemetry = new TelemetryConfig();
@@ -69,6 +67,6 @@ public class Config extends ai.verta.modeldb.common.config.Config {
 
   @Override
   public boolean hasServiceAccount() {
-    return mdb_service_user != null;
+    return service_user != null;
   }
 }

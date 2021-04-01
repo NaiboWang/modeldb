@@ -7,12 +7,12 @@ import ai.verta.modeldb.authservice.RoleService;
 import ai.verta.modeldb.authservice.RoleServiceUtils;
 import ai.verta.modeldb.common.authservice.AuthService;
 import ai.verta.modeldb.common.collaborator.CollaboratorUser;
+import ai.verta.modeldb.common.connections.UAC;
 import ai.verta.modeldb.common.exceptions.ModelDBException;
 import ai.verta.modeldb.config.Config;
 import ai.verta.modeldb.entities.versioning.RepositoryEntity;
 import ai.verta.modeldb.utils.ModelDBHibernateUtil;
 import ai.verta.modeldb.utils.ModelDBUtils;
-import ai.verta.uac.Role;
 import ai.verta.uac.UserInfo;
 import java.util.HashSet;
 import java.util.List;
@@ -34,12 +34,14 @@ public class OwnerRoleBindingRepositoryUtils {
   private static final ModelDBHibernateUtil modelDBHibernateUtil =
       ModelDBHibernateUtil.getInstance();
   private static AuthService authService;
+  private static UAC uac;
   private static RoleService roleService;
 
   public static void execute() {
     if (Config.getInstance().hasAuth()) {
       authService = AuthServiceUtils.FromConfig(Config.getInstance());
-      roleService = RoleServiceUtils.FromConfig(Config.getInstance(), authService);
+      uac = UAC.FromConfig(Config.getInstance());
+      roleService = RoleServiceUtils.FromConfig(Config.getInstance(), authService, uac);
     } else {
       LOGGER.debug("AuthService Host & Port not found");
       return;
@@ -57,7 +59,6 @@ public class OwnerRoleBindingRepositoryUtils {
     final int pagesize = 5000;
     LOGGER.debug("Total repositories {}", count);
 
-    Role ownerRole = roleService.getRoleByName(ModelDBConstants.ROLE_REPOSITORY_OWNER, null);
     while (lowerBound < count) {
 
       try (Session session = modelDBHibernateUtil.getSessionFactory().openSession()) {
@@ -98,7 +99,7 @@ public class OwnerRoleBindingRepositoryUtils {
                 ModelDBServiceResourceTypes modelDBServiceResourceTypes =
                     ModelDBUtils.getModelDBServiceResourceTypesFromRepository(repositoryEntity);
                 roleService.createRoleBinding(
-                    ownerRole,
+                    ModelDBConstants.ROLE_REPOSITORY_OWNER,
                     new CollaboratorUser(authService, userInfoValue),
                     String.valueOf(repositoryEntity.getId()),
                     modelDBServiceResourceTypes);

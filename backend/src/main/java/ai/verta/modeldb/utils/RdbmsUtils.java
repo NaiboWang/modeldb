@@ -5,6 +5,7 @@ import ai.verta.common.ModelDBResourceEnum.ModelDBServiceResourceTypes;
 import ai.verta.common.OperatorEnum.Operator;
 import ai.verta.modeldb.*;
 import ai.verta.modeldb.authservice.RoleService;
+import ai.verta.modeldb.common.CommonUtils;
 import ai.verta.modeldb.common.authservice.AuthService;
 import ai.verta.modeldb.common.dto.UserInfoPaginationDTO;
 import ai.verta.modeldb.common.exceptions.ModelDBException;
@@ -31,6 +32,7 @@ import com.google.protobuf.Value.KindCase;
 import com.google.rpc.Code;
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.persistence.criteria.*;
@@ -64,11 +66,12 @@ public class RdbmsUtils {
   // TODO: delete as it seems unused
   public static List<Project> convertProjectsFromProjectEntityList(
       RoleService roleService, AuthService authService, List<ProjectEntity> projectEntityList)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     List<Project> projects = new ArrayList<>();
     if (projectEntityList != null) {
+      Map<Long, Workspace> cacheWorkspaceMap = new HashMap<>();
       for (ProjectEntity projectEntity : projectEntityList) {
-        projects.add(projectEntity.getProtoObject(roleService, authService));
+        projects.add(projectEntity.getProtoObject(roleService, authService, cacheWorkspaceMap));
       }
     }
     return projects;
@@ -368,7 +371,7 @@ public class RdbmsUtils {
 
   public static List<Dataset> convertDatasetsFromDatasetEntityList(
       RoleService roleService, List<DatasetEntity> datasetEntityList)
-      throws InvalidProtocolBufferException {
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     List<Dataset> datasets = new ArrayList<>();
     if (datasetEntityList != null) {
       for (DatasetEntity datasetEntity : datasetEntityList) {
@@ -2158,7 +2161,7 @@ public class RdbmsUtils {
       if (versioningModeldbEntityMapping.getVersioning_location() != null
           && !versioningModeldbEntityMapping.getVersioning_location().isEmpty()) {
         Location.Builder locationBuilder = Location.newBuilder();
-        ModelDBUtils.getProtoObjectFromString(
+        CommonUtils.getProtoObjectFromString(
             versioningModeldbEntityMapping.getVersioning_location(), locationBuilder);
         versioningEntry.putKeyLocationMap(
             versioningModeldbEntityMapping.getVersioning_key(), locationBuilder.build());

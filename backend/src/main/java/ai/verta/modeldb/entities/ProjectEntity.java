@@ -13,21 +13,9 @@ import ai.verta.uac.GetResourcesResponseItem;
 import ai.verta.uac.ResourceVisibility;
 import ai.verta.uac.Workspace;
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.OneToOne;
-import javax.persistence.OrderBy;
-import javax.persistence.Table;
-import javax.persistence.Transient;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import javax.persistence.*;
 import org.hibernate.annotations.LazyCollection;
 import org.hibernate.annotations.LazyCollectionOption;
 
@@ -338,8 +326,9 @@ public class ProjectEntity {
     this.visibility_migration = visibility_migration;
   }
 
-  public Project getProtoObject(RoleService roleService, AuthService authService)
-      throws InvalidProtocolBufferException {
+  public Project getProtoObject(
+      RoleService roleService, AuthService authService, Map<Long, Workspace> cacheWorkspaceMap)
+      throws InvalidProtocolBufferException, ExecutionException, InterruptedException {
     Project.Builder projectBuilder =
         Project.newBuilder()
             .setId(getId())
@@ -363,14 +352,22 @@ public class ProjectEntity {
     }
 
     GetResourcesResponseItem projectResource =
-        roleService.getEntityResource(
-            Optional.of(this.id), Optional.empty(), ModelDBServiceResourceTypes.PROJECT);
+        roleService
+            .getEntityResource(
+                Optional.of(this.id), Optional.empty(), ModelDBServiceResourceTypes.PROJECT)
+            .get();
     projectBuilder.setVisibility(projectResource.getVisibility());
     projectBuilder.setWorkspaceServiceId(projectResource.getWorkspaceId());
     projectBuilder.setOwner(String.valueOf(projectResource.getOwnerId()));
     projectBuilder.setCustomPermission(projectResource.getCustomPermission());
 
-    Workspace workspace = authService.workspaceById(false, projectResource.getWorkspaceId());
+    Workspace workspace;
+    if (cacheWorkspaceMap.containsKey(projectResource.getWorkspaceId())) {
+      workspace = cacheWorkspaceMap.get(projectResource.getWorkspaceId());
+    } else {
+      workspace = authService.workspaceById(false, projectResource.getWorkspaceId());
+      cacheWorkspaceMap.put(workspace.getId(), workspace);
+    }
     switch (workspace.getInternalIdCase()) {
       case ORG_ID:
         projectBuilder.setWorkspaceId(workspace.getOrgId());
